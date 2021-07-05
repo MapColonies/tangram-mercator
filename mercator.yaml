@@ -1,0 +1,86 @@
+
+scene:
+    background:
+        color: black
+styles:
+    stereo:
+        lighting: false
+        base: polygons
+        shaders:
+            defines:
+                EARTH_RADIUS: 6378137.0 //radius of ellipsoid, WGS84
+                INV_FLATTENING: 0.00335281066474748
+                ECCENTRICITY: 0.081819190842622
+                HALF_ECCENTRICITY: 0.040909595421311
+                PI: 3.14159265358979323846
+                HALF_PI: 1.57079632679489661923
+                QUARTER_PI: 0.78539816339744830961
+                MAX_Y: 18764656.2313806 //Y of 84N latitude
+                MIN_Y: -15496570.7397237 //Y of 80S latitude
+            blocks:
+                global: |
+                    // http://wiki.openstreetmap.org/wiki/Mercator
+                    float y2lat_m (float y) { return (2.0*atan(exp((y/EARTH_RADIUS)))-HALF_PI); }
+                    float x2lon_m (float x) { return (x/EARTH_RADIUS); }
+
+                    vec2 mercator(float lat, float lon) {
+                        float e_sinlat = ECCENTRICITY*sin(lat);
+
+                        float x = EARTH_RADIUS * lon;
+                        float y = EARTH_RADIUS * log(tan(QUARTER_PI+lat/2.0)*pow((1.0-e_sinlat)/(1.0+e_sinlat), HALF_ECCENTRICITY));
+                        
+                        if (y > MAX_Y) {
+                            y = MAX_Y;
+                        }
+
+                        if (y < MIN_Y) {
+                            y = MIN_Y;
+                        }
+
+                        return vec2(x, y);
+                    }
+
+
+                position: |
+                    // web mercator position of the current vertex, u_map_position = center of screen,
+                    // position.xy = vertex screen position in meters from the center of the screen
+                    vec2 webmercator = u_map_position.xy + position.xy;
+                    float lat = y2lat_m(webmercator.y);
+                    float lon = x2lon_m(webmercator.x);
+
+                    float centerlat = y2lat_m(u_map_position.y); // latitude of origin
+                    float centerlon = x2lon_m(u_map_position.x); // central meridian
+
+                    vec2 center = mercator(centerlat, centerlon);
+                    vec2 projected = mercator(lat, lon);
+                    position.xy = projected - center;
+
+    stereolines:
+        base: lines
+        mix: stereo
+sources:
+    osm:
+        type: TopoJSON
+        url: https://meetar.github.io/mapzen-tiles/vector/v1/256/all/{z}/{x}/{y}.topojson
+layers:
+    earth:
+        data: { source: osm }
+        draw:
+            stereolines:
+                order: function() { return feature.sort_key || 0; }
+                color: purple
+                width: 3px
+    water:
+        data: { source: osm }
+        draw:
+            stereolines:
+                order: function() { return feature.sort_key || 0; }
+                color: pink
+                width: 1px
+    boundaries:
+        data: { source: osm }
+        draw:
+            stereolines:
+                order: function() { return feature.sort_key || 0; }
+                color: cyan
+                width: 2px
